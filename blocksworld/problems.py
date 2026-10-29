@@ -13,7 +13,7 @@
 """
 import itertools
 
-from blocksworld import TABLE, action_to_text, goal_reached, make_state, stacks_of
+from blocksworld import TABLE, action_to_text, all_arrangements, goal_reached, make_state, stacks_of
 
 NAMES = "ABCDEFG"
 
@@ -148,3 +148,45 @@ def build_sample(sample_id, init, goal, goal_type, plan):
             {"role": "assistant", "content": "\n".join(action_to_text(a) for a in plan)},
         ],
     }
+
+
+# ---------- 4. 列举全部题：3–5 块积木的题不多，一道道全部列出来 ----------
+
+def shape_of(state):
+    """每摞有几块，从高到低排。例如 [["A", "B"], ["C"]] 的形状是 (2, 1)。"""
+    return tuple(sorted((len(stack) for stack in stacks_of(state)), reverse=True))
+
+
+def enumerate_problems(n):
+    """列出 n 块积木的全部题，语义相同的只留一份，按 (goal_type, 签名) 排好序。
+    每项是 {"canonical": 签名, "goal_type": ..., "init": 初始状态, "goal": 目标}。
+
+    目标的两种写法和 random_problem 一样：
+      complete：取一个目标摆法，写出每块积木的位置
+      partial ：从目标摆法里挑 1 条或几条“谁在谁上面”；挑满 n−1 条就定死了整个摆法，和 complete 题重复，不要
+    一开始就已经满足目标的题不要。
+
+    省时间的办法：初始摆法只取每种形状的一个代表。形状相同（每摞块数一样）的两个摆法，改名就能互相变成对方，
+    所以任何一道题都能改名成“初始摆法是代表”的样子，不会漏题；改名后仍可能重复，照样用 canonical 去重。
+    5 块积木的初始摆法因此从 501 种减到 7 种。
+    注意：这样列出来的题，初始摆法的积木名字只有那几种写法，写成训练数据之前要另外随机改名。"""
+    arrangements = all_arrangements(n)
+    representatives = {}
+    for state in arrangements:
+        representatives.setdefault(shape_of(state), state)
+    found = {}
+    for init in representatives.values():
+        for target in arrangements:
+            goals = [("complete", sorted(target["on"].items()))]
+            facts = sorted((x, y) for x, y in target["on"].items() if y != TABLE)
+            for k in range(1, len(facts) + 1):
+                if k == n - 1:
+                    continue  # 定死了整个摆法，和 complete 题重复
+                goals += [("partial", list(sub)) for sub in itertools.combinations(facts, k)]
+            for goal_type, goal in goals:
+                if goal_reached(init, goal):
+                    continue
+                sig = canonical(init, goal)
+                if sig not in found:
+                    found[sig] = {"canonical": sig, "goal_type": goal_type, "init": init, "goal": goal}
+    return sorted(found.values(), key=lambda p: (p["goal_type"], p["canonical"]))

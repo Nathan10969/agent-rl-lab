@@ -210,3 +210,22 @@ def solve_bfs(init, goal):
             seen.add(key)
             queue.append((nxt, plan + [action]))
     return None
+
+
+# ---------- 6. 穷举：n 块积木的全部摆法 ----------
+
+def all_arrangements(n):
+    """从“全部在桌上”出发，把能到达的状态都走一遍，收集手空时的状态，就是 n 块积木的全部摆法。
+    3 块 13 种、4 块 73 种、5 块 501 种；列举全部题和测试都用它。"""
+    start = make_state([[b] for b in "ABCDEFG"[:n]])
+    seen, todo, found = {state_key(start)}, [start], []
+    while todo:
+        state = todo.pop()
+        if state["holding"] is None:
+            found.append(state)
+        for action in possible_actions(state):
+            nxt = apply_action(state, action)
+            if state_key(nxt) not in seen:
+                seen.add(state_key(nxt))
+                todo.append(nxt)
+    return found

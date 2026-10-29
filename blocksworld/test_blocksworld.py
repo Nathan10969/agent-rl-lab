@@ -4,11 +4,12 @@
 
 运行：python test_blocksworld.py
 """
+import itertools
 import random
 
-from blocksworld import (TABLE, apply_action, check_action, make_state, parse_plan, possible_actions,
-                         simulate, solve_bfs, stacks_of, state_key)
-from problems import canonical, fixes_every_block, random_state
+from blocksworld import (TABLE, all_arrangements, apply_action, check_action, goal_reached, make_state,
+                         parse_plan, possible_actions, simulate, solve_bfs, stacks_of)
+from problems import canonical, enumerate_problems, fixes_every_block, random_state
 
 # 和 Codex 例子里一样的局面：B 压在 A 上，C 单独在桌上；目标是 A 在 B 上面
 INIT = make_state([["A", "B"], ["C"]])
@@ -104,22 +105,6 @@ def test_complete_goal_checks_table():
     assert not r["success"] and "没有达成目标" in r["error"]
 
 
-def all_arrangements(n):
-    """从“全部在桌上”出发，把能到达的状态都走一遍，收集手空时的状态，就是 n 块积木的全部摆法。"""
-    start = make_state([[b] for b in "ABCDEFG"[:n]])
-    seen, todo, found = {state_key(start)}, [start], []
-    while todo:
-        state = todo.pop()
-        if state["holding"] is None:
-            found.append(state)
-        for action in possible_actions(state):
-            nxt = apply_action(state, action)
-            if state_key(nxt) not in seen:
-                seen.add(state_key(nxt))
-                todo.append(nxt)
-    return found
-
-
 def test_fixes_every_block():
     """只写“谁在谁上面”时，恰好 n−1 条关系才会定死整个摆法。3、4 块积木的全部摆法穷举核对。"""
     assert fixes_every_block([("A", "B"), ("B", "C")], 3)  # Codex 的例子：C 只能在桌上
@@ -140,6 +125,33 @@ def test_canonical_complete_vs_partial():
     init = make_state([["A"], ["B"], ["C"]])
     assert canonical(init, [("A", "B")]) != canonical(init, [("A", "B"), ("B", TABLE), ("C", TABLE)])
     assert canonical(init, [("A", "B"), ("B", "C")]) == canonical(init, [("A", "B"), ("B", "C"), ("C", TABLE)])
+
+
+def test_enumerate_problems_3_blocks():
+    """3 块积木：写全目标 26 道，部分目标 10 道。两个数都能手算：
+    写全：13 种初始 × 13 种目标，去掉相同的 13 种，剩 156 种；改名有 6 种方式，每道题正好被数了 6 次，156 ÷ 6 = 26。
+    部分：只能写 1 条“X 在 Y 上面”，13 种初始 × 6 种 (X, Y) = 78，去掉一开始就满足的 18 种，剩 60；60 ÷ 6 = 10。"""
+    problems = enumerate_problems(3)
+    assert sum(p["goal_type"] == "complete" for p in problems) == 26
+    assert sum(p["goal_type"] == "partial" for p in problems) == 10
+
+
+def test_enumerate_problems_matches_brute_force():
+    """换一种笨办法再列一遍：初始摆法用全部摆法；部分目标从所有“谁在谁上面”的组合里挑，至少一种摆法能做到就算。
+    两种办法列出的题必须完全一样，才说明“初始摆法只取每种形状一个代表”没有漏题，也没有重复。"""
+    for n in (3, 4):
+        arrangements = all_arrangements(n)
+        on_sets = [{(x, y) for x, y in s["on"].items() if y != TABLE} for s in arrangements]
+        blocks = "ABCDEFG"[:n]
+        pairs = [(x, y) for x in blocks for y in blocks if x != y]
+        partial_goals = [list(sub) for k in range(1, n - 1) for sub in itertools.combinations(pairs, k)
+                         if any(set(sub) <= s for s in on_sets)]
+        complete_goals = [sorted(s["on"].items()) for s in arrangements]
+        expected = {canonical(init, goal) for init in arrangements for goal in complete_goals + partial_goals
+                    if not goal_reached(init, goal)}
+        got = [p["canonical"] for p in enumerate_problems(n)]
+        assert len(got) == len(set(got))
+        assert set(got) == expected
 
 
 if __name__ == "__main__":
