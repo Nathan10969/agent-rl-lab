@@ -9,6 +9,8 @@ import random
 
 from blocksworld import (TABLE, all_arrangements, apply_action, check_action, goal_reached, make_state,
                          parse_plan, possible_actions, simulate, solve_bfs, stacks_of)
+from make_dataset import rename_problem
+from planbench import parse_pddl, to_problem
 from problems import canonical, enumerate_problems, fixes_every_block, random_state
 
 # 和 Codex 例子里一样的局面：B 压在 A 上，C 单独在桌上；目标是 A 在 B 上面
@@ -152,6 +154,48 @@ def test_enumerate_problems_matches_brute_force():
         got = [p["canonical"] for p in enumerate_problems(n)]
         assert len(got) == len(set(got))
         assert set(got) == expected
+
+
+def test_rename_keeps_structure():
+    """随机改名后，初始状态和目标一起变，结构签名不变，最短步数也不变。"""
+    rng = random.Random(0)
+    for p in enumerate_problems(4)[::20]:
+        init, goal = rename_problem(p["init"], p["goal"], rng)
+        assert canonical(init, goal) == p["canonical"]
+        assert len(solve_bfs(init, goal)) == len(solve_bfs(p["init"], p["goal"]))
+
+
+PLANBENCH_INSTANCE_1 = """(define (problem BW-rand-4)
+(:domain blocksworld-4ops)
+(:objects a b c d )
+(:init
+(handempty)
+(ontable a)
+(on b c)
+(ontable c)
+(ontable d)
+(clear a)
+(clear b)
+(clear d)
+)
+(:goal
+(and
+(on c b))
+)
+)"""
+
+
+def test_planbench_parse():
+    """PlanBench generated_basic/instance-1.pddl：b 在 c 上，其余在桌上；目标 c 在 b 上。
+    a、b、c、d 按字母顺序改成 A、B、C、D。目标里出现 on / ontable 以外的谓词要报错，不能悄悄丢掉。"""
+    init, goal = to_problem(*parse_pddl(PLANBENCH_INSTANCE_1))
+    assert stacks_of(init) == [["A"], ["C", "B"], ["D"]] and goal == [("C", "B")]
+    try:
+        to_problem(*parse_pddl(PLANBENCH_INSTANCE_1.replace("(on c b))", "(on c b) (clear a))")))
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("目标里的 clear 应该报错")
 
 
 if __name__ == "__main__":

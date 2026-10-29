@@ -1,0 +1,98 @@
+{
+  "version": "v1",
+  "seed": 20261029,
+  "ratios": {
+    "train": 0.8,
+    "val": 0.1,
+    "test": 0.1
+  },
+  "code_commit": "230b0215854c1472574ad4879f9e4cc0807a217e (dirty)",
+  "pool": 4070,
+  "excluded": {
+    "planbench": 263,
+    "debug": 56,
+    "overlap": 26,
+    "planbench_file": "splits/planbench_reserved.txt",
+    "planbench_sha256": "9a6bfb35962d00128bbd556f8ac6221211e706b8429887fdc04d1627e4d94e16"
+  },
+  "remaining": 3777,
+  "splits": {
+    "train": {
+      "count": 3021,
+      "by_group": {
+        "n=3 complete": 9,
+        "n=4 complete": 121,
+        "n=4 partial": 14,
+        "n=5 complete": 1671,
+        "n=5 partial": 1206
+      },
+      "plan_len": {
+        "2": 62,
+        "4": 155,
+        "6": 369,
+        "8": 662,
+        "10": 828,
+        "12": 605,
+        "14": 285,
+        "16": 55
+      },
+      "data_file": "data/blocksworld/v1/train.jsonl",
+      "data_sha256": "bea43abc50de1d79c4f82e9347eda958d90d6fd45d6bf4403ef57aa2461d954d",
+      "signatures_file": "splits/v1/train.txt",
+      "signatures_sha256": "9b990122a05de1d34907addf41eb770e494ed4037d43af77eec91494f8560296"
+    },
+    "val": {
+      "count": 378,
+      "by_group": {
+        "n=3 complete": 1,
+        "n=4 complete": 15,
+        "n=4 partial": 2,
+        "n=5 complete": 209,
+        "n=5 partial": 151
+      },
+      "plan_len": {
+        "2": 7,
+        "4": 16,
+        "6": 40,
+        "8": 91,
+        "10": 107,
+        "12": 70,
+        "14": 40,
+        "16": 7
+      },
+      "data_file": "data/blocksworld/v1/val.jsonl",
+      "data_sha256": "4ae9744bb32044303becd700712627267ed4ae21b4c07b4bfdff8354c9b7d6c5",
+      "signatures_file": "splits/v1/val.txt",
+      "signatures_sha256": "b6b4ebf902152be91e0afb083aadf9f147d00a6372446b4534d877a70fbeca4e"
+    },
+    "test": {
+      "count": 378,
+      "by_group": {
+        "n=3 complete": 1,
+        "n=4 complete": 15,
+        "n=4 partial": 2,
+        "n=5 complete": 209,
+        "n=5 partial": 151
+      },
+      "plan_len": {
+        "2": 7,
+        "4": 16,
+        "6": 49,
+        "8": 87,
+        "10": 99,
+        "12": 86,
+        "14": 29,
+        "16": 5
+      },
+      "data_file": "data/blocksworld/v1/test.jsonl",
+      "data_sha256": "8d1d4ecbc928a0f01fb48b03fd8d27a18c10fdc9b121cc392fc44ce945ca452b",
+      "signatures_file": "splits/v1/test.txt",
+      "signatures_sha256": "3f01879535c2e4d5807b8a8fc1d03b94aa2d60bfa659825d156d80b18fa2b271"
+    }
+  },
+  "notes": [
+    "排除的是当前签名规则认得出的同构重复；相关但不相同的题仍可能分在不同集合。",
+    "严格留出 PlanBench 后，3 块积木的部分目标题在训练池里一道都没有，4 块的部分目标题也很少。",
+    "data/ 被 Git 忽略；数据可用同一份代码和 seed 重新生成，再用这里的 sha256 核对是否一致。"
+  ]
+}
