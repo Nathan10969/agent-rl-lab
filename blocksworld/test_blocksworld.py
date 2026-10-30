@@ -10,6 +10,7 @@ import random
 from blocksworld import (TABLE, all_arrangements, apply_action, check_action, goal_reached, make_state,
                          parse_plan, possible_actions, simulate, solve_bfs, stacks_of)
 from make_dataset import rename_problem
+from make_generalization import sample_problem
 from planbench import parse_pddl, to_problem
 from problems import canonical, enumerate_problems, fixes_every_block, random_state
 
@@ -154,6 +155,34 @@ def test_enumerate_problems_matches_brute_force():
         got = [p["canonical"] for p in enumerate_problems(n)]
         assert len(got) == len(set(got))
         assert set(got) == expected
+
+
+def test_partial_goal_matches_arrangement():
+    """泛化题抽部分目标的依据：k 条“谁在谁上面”组成的目标，正好对应一个有 n−k 摞的摆法。4 块积木穷举核对：
+    把有 2 到 n−1 摞的摆法各写成它的“谁在谁上面”，既不重复，也正好是全部能做到的部分目标。"""
+    n = 4
+    arrangements = all_arrangements(n)
+    on_sets = [frozenset((x, y) for x, y in s["on"].items() if y != TABLE) for s in arrangements]
+    pairs = [(x, y) for x in "ABCD" for y in "ABCD" if x != y]
+    possible = {frozenset(sub) for k in range(1, n - 1) for sub in itertools.combinations(pairs, k)
+                if any(set(sub) <= s for s in on_sets)}
+    from_arrangements = [on for s, on in zip(arrangements, on_sets) if 2 <= len(stacks_of(s)) <= n - 1]
+    assert len(from_arrangements) == len(set(from_arrangements))
+    assert set(from_arrangements) == possible
+
+
+def test_sample_problem():
+    """6 块积木抽 50 道：写全目标给出每块积木的位置；部分目标 1 到 4 条“谁在谁上面”，不写“在桌上”；都还没完成。"""
+    rng = random.Random(0)
+    arrangements = all_arrangements(6)
+    for goal_type in ("complete", "partial"):
+        for _ in range(50):
+            init, goal = sample_problem(arrangements, 6, goal_type, rng)
+            assert not goal_reached(init, goal)
+            if goal_type == "complete":
+                assert sorted(x for x, _ in goal) == list("ABCDEF")
+            else:
+                assert 1 <= len(goal) <= 4 and all(y != TABLE for _, y in goal)
 
 
 def test_rename_keeps_structure():
