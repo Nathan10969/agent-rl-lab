@@ -5,16 +5,19 @@
 ## 当前状态
 
 - 仓库初始化日期：2026-10-28。
-- `blocksworld/` 已有模拟器、BFS 参考求解器、出题与去重代码，11 项手写测试通过，另有两版各 30 道人工检查样例（`blocksworld/examples/`）；尚未生成正式数据集、下载模型或启动训练。
+- `blocksworld/` 已有模拟器、BFS 参考求解器、出题与去重代码；正式数据集和 6–7 块积木泛化题已在本地生成。模型、数据和训练输出按仓库约定不提交 Git。
+- 已在 Mac 上用 Qwen2.5-0.5B-Instruct 和 LoRA 完成一次小规模 SFT 流程试运行，并记录 MPS 内存排查。**这不是完整训练或对最终测试集的评测。**
+- 当前试运行脚本使用固定输出目录，再次运行可能覆盖已有 adapter 和结果；完整训练前先解决输出隔离问题。
 - 第一阶段使用 Blocksworld（积木世界）的离散任务规划，不控制真实机器人的电机，也不涉及图像策略或连续动作。
 - 学习目标是能够解释并亲手修改训练链路；先跑通、理解，再扩大模型和任务。
 
 ## 从这里开始
 
 1. [一条积木任务：先看输入、动作和判分](docs/lessons/01-one-blocksworld-task.md)
-2. [实践路线和验收条件](docs/ROADMAP.md)
-3. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
-4. [讲解与协作约定](AGENTS.md)
+2. [第一次 SFT 与 MPS 内存排查](docs/lessons/02-first-sft-and-mps-memory.md)
+3. [实践路线和验收条件](docs/ROADMAP.md)
+4. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
+5. [讲解与协作约定](AGENTS.md)
 
 实践路线：
 

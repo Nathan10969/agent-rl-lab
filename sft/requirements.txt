@@ -1,0 +1,9 @@
+# SFT 环境（2026-10-29 在 Apple M3 Max、macOS、Python 3.12 上装好并跑通）
+# 安装：python3 -m venv .venv && .venv/bin/python -m pip install -r sft/requirements.txt
+torch==2.10.0
+transformers==4.57.6
+peft==0.21.2
+accelerate==1.15.0
+tokenizers==0.22.2
+safetensors==0.8.0
+huggingface_hub==0.36.2
