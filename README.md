@@ -6,8 +6,8 @@
 
 - 仓库初始化日期：2026-10-28。
 - `blocksworld/` 已有模拟器、BFS 参考求解器、出题与去重代码；正式数据集和 6–7 块积木泛化题已在本地生成。模型、数据和训练输出按仓库约定不提交 Git。
-- 已在 Mac 上用 Qwen2.5-0.5B-Instruct 和 LoRA 完成一次小规模 SFT 流程试运行，并记录 MPS 内存排查。**这不是完整训练或对最终测试集的评测。**
-- 当前试运行脚本使用固定输出目录，再次运行可能覆盖已有 adapter 和结果；完整训练前先解决输出隔离问题。
+- 已在 Mac 上完成 Qwen2.5-0.5B-Instruct 的 LoRA SFT，以及 20 步简化 GRPO 试运行；[实验记录](docs/lessons/03-sft-to-grpo.md)包括设置、完整验证集对比和真实案例。**这不是最终测试集或泛化能力评测。**
+- 早期 `sft/train_lora.py` 使用固定输出目录，重复运行可能覆盖结果；全量 SFT 和 GRPO 脚本使用独立的新运行目录。
 - 第一阶段使用 Blocksworld（积木世界）的离散任务规划，不控制真实机器人的电机，也不涉及图像策略或连续动作。
 - 学习目标是能够解释并亲手修改训练链路；先跑通、理解，再扩大模型和任务。
 
@@ -15,9 +15,10 @@
 
 1. [一条积木任务：先看输入、动作和判分](docs/lessons/01-one-blocksworld-task.md)
 2. [第一次 SFT 与 MPS 内存排查](docs/lessons/02-first-sft-and-mps-memory.md)
-3. [实践路线和验收条件](docs/ROADMAP.md)
-4. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
-5. [讲解与协作约定](AGENTS.md)
+3. [完整 SFT 到第一次 GRPO：实验记录与真实案例](docs/lessons/03-sft-to-grpo.md)
+4. [实践路线和验收条件](docs/ROADMAP.md)
+5. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
+6. [讲解与协作约定](AGENTS.md)
 
 实践路线：
 
@@ -32,6 +33,7 @@ DAPO 是与 GRPO 密切相关的改进方案，不是必然更好的替代品。
 - 不把作者论文结果填写成我们的实验结果；没有运行的实验明确标为未运行。
 - 不自动租用 GPU、开启付费服务或运行长期训练。
 - 每次课程只推进一个可理解、可检查的小环节，不预先生成整套训练框架。
+- 自动化测试还需要单独安装 `pytest`；它不包含在 `sft/requirements.txt` 的训练依赖中。
 
 ## 上游资料
 
