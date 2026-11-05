@@ -16,9 +16,10 @@
 1. [一条积木任务：先看输入、动作和判分](docs/lessons/01-one-blocksworld-task.md)
 2. [第一次 SFT 与 MPS 内存排查](docs/lessons/02-first-sft-and-mps-memory.md)
 3. [完整 SFT 到第一次 GRPO：实验记录与真实案例](docs/lessons/03-sft-to-grpo.md)
-4. [实践路线和验收条件](docs/ROADMAP.md)
-5. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
-6. [讲解与协作约定](AGENTS.md)
+4. [GRPO 中断续训：保存什么、怎样验证](docs/lessons/04-grpo-resume.md)
+5. [实践路线和验收条件](docs/ROADMAP.md)
+6. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
+7. [讲解与协作约定](AGENTS.md)
 
 实践路线：
 

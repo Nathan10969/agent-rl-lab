@@ -54,6 +54,8 @@ def parse_args():
     p.add_argument("--run-dir", required=True, help="必须不存在的本次输出目录")
     p.add_argument("--steps", type=int, default=20, help="更新几步（--smoke 时固定 2 步）")
     p.add_argument("--save-every", type=int, default=10, help="每几步存一次 adapter；最后一步总会存")
+    p.add_argument("--resume-from", help="从完整训练存档继续；输出仍写入新的 --run-dir")
+    p.add_argument("--stop-after", type=int, help="在指定 step 存档后停止；--steps 仍表示总目标步数")
     p.add_argument("--smoke", action="store_true", help="2 步 × 每步 2 道题，外加检查；不能当作训练结果")
     p.add_argument("--device", default="mps", help="mps；cpu 只允许和 --smoke 一起用，在沙箱里检查流程")
     return p.parse_args()
@@ -67,15 +69,49 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def initialize_randomness(seed):
+    """让独立进程从相同的 Python 和 PyTorch 随机状态开始。"""
+    import torch
+    random.seed(seed)
+    torch.manual_seed(seed)
+
+
+def tokenizer_fingerprints(model_dir, chat_template):
+    """记录 tokenizer 本地资产及最终加载的模板；新增模板同样改变指纹。"""
+    model_dir = Path(model_dir)
+    extensions = {".json", ".txt", ".jinja", ".model", ".tiktoken", ".vocab", ".bpe"}
+    files = sorted(p for p in model_dir.iterdir() if p.is_file() and p.suffix in extensions)
+    templates = model_dir / "chat_templates"
+    if templates.is_dir():
+        files.extend(sorted(p for p in templates.rglob("*.jinja") if p.is_file()))
+    result = {str(p.relative_to(model_dir)): sha256(p) for p in files}
+    encoded = json.dumps(chat_template, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    result["loaded_chat_template"] = hashlib.sha256(encoded).hexdigest()
+    return result
+
+
+def adapter_fingerprints(path):
+    """权重和配置都影响 LoRA 行为，必须一起核对。"""
+    path = Path(path)
+    return {name: sha256(path / name) for name in ("adapter_model.safetensors", "adapter_config.json")}
+
+
 def main():
     args = parse_args()
     run_dir = Path(args.run_dir).resolve()
     if run_dir.exists():
         raise SystemExit(f"输出目录已存在，拒绝覆盖：{run_dir}")
+    if args.resume_from and not (Path(args.resume_from) / "resume_manifest.json").is_file():
+        raise SystemExit("缺少完整续训存档标记；旧 adapter 无法精确续训。")
     if args.device == "cpu" and not args.smoke:
         raise SystemExit("CPU 只用于 --smoke；正式试跑请用 mps。")
     steps = 2 if args.smoke else args.steps
     prompts_per_step = 2 if args.smoke else PROMPTS_PER_STEP
+    if steps < 1 or args.save_every < 1:
+        raise SystemExit("--steps 和 --save-every 必须大于 0。")
+    if args.stop_after is not None and not 1 <= args.stop_after <= steps:
+        raise SystemExit("--stop-after 必须在 1 到 --steps 之间。")
+    stop_at = args.stop_after if args.stop_after is not None else steps
 
     # 检查完输出目录再导入模型相关的库，--help 和防覆盖检查不用等
     import peft
@@ -87,6 +123,7 @@ def main():
     from data import DATA_DIR, MODEL_PATH, load_jsonl
     from full_sft_utils import verify_file_hash
     from grpo_core import completion_mask, group_advantages, grpo_loss, policy_logprobs, reward, token_logprobs
+    from resume_state import inspect_checkpoint, restore_training_state, save_checkpoint
 
     device = args.device
     if device == "mps" and not torch.backends.mps.is_available():
@@ -191,7 +228,7 @@ def main():
         return math.sqrt(sum(((p - ref[n]) ** 2).sum().item() for n, p in trainable.items()))
 
     try:
-        code = [Path(__file__), REPO / "grpo" / "grpo_core.py", REPO / "sft" / "eval_plans.py",
+        code = [Path(__file__), REPO / "grpo" / "grpo_core.py", REPO / "grpo" / "resume_state.py", REPO / "sft" / "eval_plans.py",
                 REPO / "sft" / "data.py", REPO / "blocksworld" / "blocksworld.py"]
         git = lambda *a: subprocess.run(["git", *a], cwd=REPO, text=True, capture_output=True).stdout.strip()  # noqa: E731
         config = {"mode": "smoke" if args.smoke else "trial", "device": device, "dtype": "float32",
@@ -211,15 +248,39 @@ def main():
                                "prompts_per_generate_call": GEN_PROMPTS_PER_CALL},
                   "optimizer": {"name": "AdamW", "lr": LR, "weight_decay": 0.0, "max_grad_norm": MAX_GRAD_NORM},
                   "seed": SEED, "save_every": args.save_every}
+        # 只保存影响训练轨迹的值；运行目录和人为停止点不属于模型配置。
+        compatibility = {
+            "model_sha256": config["model_sha256"], "start_adapter_sha256": config["start_adapter_sha256"],
+            "start_adapter_files": adapter_fingerprints(START),
+            "train_sha256": train_sha, "code_sha256": config["code_sha256"],
+            "tokenizer_sha256": tokenizer_fingerprints(MODEL_PATH, tokenizer.chat_template),
+            "versions": {**config["versions"], "python": list(sys.version_info[:3])},
+            "device": device, "dtype": "float32", "steps": steps, "mode": config["mode"],
+            "prompts_per_step": prompts_per_step, "group_size": GROUP,
+            "sampling": config["sampling"], "optimizer": config["optimizer"],
+            "advantage": config["advantage"], "loss": config["loss"],
+            "clip_eps": CLIP_EPS, "kl_beta": 0.0, "seed": SEED, "save_every": args.save_every,
+        }
+        resume_state = inspect_checkpoint(args.resume_from, compatibility) if args.resume_from else None
+        if resume_state:
+            completed = resume_state["completed_step"]
+            order_saved = resume_state["order"]
+            if not isinstance(completed, int) or not 0 < completed < steps or completed >= stop_at:
+                raise ValueError("续训 step 必须在保存的步骤之后且不超过总目标。")
+            if len(order_saved) != len(train) or sorted(order_saved) != list(range(len(train))):
+                raise ValueError("续训题目顺序无效。")
+        config["resume_from"] = str(Path(args.resume_from).resolve()) if args.resume_from else None
+        config["stop_after"] = stop_at
         (run_dir / "config.json").write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n")
         log(f"运行目录 {run_dir}；模式 {config['mode']}；{steps} 步 × 每步 {prompts_per_step} 道题 × {GROUP} 个答案")
 
-        torch.manual_seed(SEED)
+        initialize_randomness(SEED)
         order = list(range(len(train)))
         random.Random(SEED).shuffle(order)
         base = AutoModelForCausalLM.from_pretrained(MODEL_PATH, dtype=torch.float32, local_files_only=True).to(device)
         # is_trainable=True：不加的话 adapter 按“只推理”加载，LoRA 参数没有梯度，训练会静悄悄地什么都不改
-        model = PeftModel.from_pretrained(base, START, is_trainable=True).to(device)
+        adapter_source = Path(args.resume_from) if args.resume_from else START
+        model = PeftModel.from_pretrained(base, adapter_source, is_trainable=True).to(device)
         trainable = {n: p for n, p in model.named_parameters() if p.requires_grad}
         if not trainable or not all("lora_" in n for n in trainable):
             raise SystemExit("可训练参数里有不是 LoRA 的，已停止。")
@@ -235,7 +296,14 @@ def main():
         eos_ids = set(model.generation_config.eos_token_id)  # <|im_end|> 和 <|endoftext|>（补齐也用它）
         checks, history = {}, []
 
-        for step in range(1, steps + 1):
+        first_step = 1
+        if resume_state:
+            order = resume_state["order"]
+            first_step = resume_state["completed_step"] + 1
+            log(f"从 {args.resume_from} 恢复，下一步 {first_step}；写入独立运行目录。")
+            restore_training_state(resume_state, optimizer, list(trainable), device)
+
+        for step in range(first_step, stop_at + 1):
             rows = [train[j] for j in order[(step - 1) * prompts_per_step: step * prompts_per_step]]
             prev = {n: p.detach().clone() for n, p in trainable.items()}
 
@@ -296,6 +364,7 @@ def main():
                 append_jsonl("samples.jsonl", {"step": step, "id": rows[i // GROUP]["id"], "k": i % GROUP,
                                                "reward": r, "advantage": adv[i].item(), **s,
                                                "n_tokens": int(n_tokens[i].item()), "eos_hit": bool(eos_hit[i]),
+                                               "token_ids": batch["comp_ids"][i, :int(n_tokens[i].item())].tolist(),
                                                "text": t})
             g = record["groups"]
             log(f"step {step}/{steps}  成功 {record['success']:.0f}/{record['answers']}  "
@@ -310,9 +379,10 @@ def main():
                 values = sorted({round(a, 3) for a in adv[sl].tolist()}, reverse=True)
                 log(f"    {row['id']}  奖励 {bits}  优势 {' / '.join(f'{a:+.3f}' for a in values)}")
 
-            if step % args.save_every == 0 or step == steps:
-                model.save_pretrained(run_dir / f"checkpoint-{step:04d}")
-                log(f"step {step} adapter 已保存")
+            if step % args.save_every == 0 or step == stop_at:
+                checkpoint = run_dir / f"checkpoint-{step:04d}"
+                save_checkpoint(checkpoint, model, optimizer, step, order, list(trainable), compatibility, device)
+                log(f"step {step} 完整训练存档已保存")
             free_cache()
 
         # 原模型参数一个数都不能变
@@ -324,18 +394,20 @@ def main():
             first_group = {k: v[:GROUP] for k, v in batch.items() if k != "sampled_logp"}
             before = all_logprobs(model, first_group)
             fresh = AutoModelForCausalLM.from_pretrained(MODEL_PATH, dtype=torch.float32, local_files_only=True)
-            reloaded = PeftModel.from_pretrained(fresh.to(device), run_dir / f"checkpoint-{steps:04d}").to(device)
+            reloaded = PeftModel.from_pretrained(fresh.to(device), run_dir / f"checkpoint-{stop_at:04d}").to(device)
             diff = ((all_logprobs(reloaded, first_group) - before).abs() * mask[:GROUP]).max().item()
             checks["reload_max_diff"] = diff
             log(f"[检查 b] 保存再加载后 log 概率最大差 {diff:.2e}")
 
         result = {"config": config, "checks": checks, "history": history,
+                  "segment_first_step": first_step, "segment_last_step": stop_at,
+                  "target_steps": steps, "stopped_early": stop_at < steps,
                   "total_success": sum(h["success"] for h in history),
                   "total_answers": sum(h["answers"] for h in history),
                   "mixed_groups": sum(h["groups"]["mixed"] for h in history),
-                  "total_groups": steps * prompts_per_step}
+                  "total_groups": len(history) * prompts_per_step}
         (run_dir / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-        log(f"完成：{steps} 步共采 {result['total_answers']} 个答案，成功 {result['total_success']:.0f}；"
+        log(f"本段完成：step {first_step}–{stop_at} 共采 {result['total_answers']} 个答案，成功 {result['total_success']:.0f}；"
             f"有对有错 {result['mixed_groups']}/{result['total_groups']} 组。写出 {run_dir}")
     except BaseException:
         log("运行未完成：\n" + traceback.format_exc())
