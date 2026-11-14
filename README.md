@@ -9,7 +9,7 @@
 - 已在 Mac 上完成 Qwen2.5-0.5B-Instruct 的 LoRA SFT，以及 20 步简化 GRPO 试运行；[实验记录](docs/lessons/03-sft-to-grpo.md)包括设置、完整验证集对比和真实案例。**这不是最终测试集或泛化能力评测。**
 - 已实现积木任务的 DAPO 教学版，并进行了小规模真实模型冒烟检查；[记录](docs/lessons/05-dapo-first-implementation.md)区分单元测试、流程验证与尚未开展的性能实验。
 - 已完成 20 批积木 DAPO 教学实验及完整 val 同题对比，见[实验记录](docs/lessons/06-dapo-first-run.md)；这不是论文复现或独立 test 结论。
-- 已完成确定性多轮交互、多轮 SFT 和小规模多轮 RL 学习；随后加入逐步奖励、reward-to-go、价值预测与每步优势。最近的 [10 步价值头对照](docs/lessons/15-joint10-value-ablation.md)中，两组都在 30 道开发题上成功 11 道；单次结果不足以判断方法普遍优劣。
+- 已完成确定性多轮交互、多轮 SFT 和小规模多轮 RL 学习；随后加入逐步奖励、reward-to-go、价值预测与每步优势。[增加到 50 批](docs/lessons/16-joint50-training-budget.md)后，两组在 30 道开发题上分别成功 11 和 10 道；[策略学习率与梯度裁剪小试](docs/lessons/18-actor-lr-clip-pilot.md)仍需多随机种子复核，单次结果不足以判断方法普遍优劣。
 - 多轮阶段的代码与测试仍在本地整理，暂未全部纳入公开仓库；下方学习记录公开的是过程、设置、结果及其局限，不包含模型权重和原始轨迹。
 - 早期 `sft/train_lora.py` 使用固定输出目录，重复运行可能覆盖结果；全量 SFT 和 GRPO 脚本使用独立的新运行目录。
 - 第一阶段使用 Blocksworld（积木世界）的离散任务规划，不控制真实机器人的电机，也不涉及图像策略或连续动作。
@@ -32,9 +32,12 @@
 13. [固定策略：10 步价值头小试](docs/lessons/13-frozen-policy-value-horizon10.md)
 14. [固定开局：从 4 次采样增加到 16 次](docs/lessons/14-value-sampling-uncertainty.md)
 15. [10 步多轮训练：价值头有没有额外收益](docs/lessons/15-joint10-value-ablation.md)
-16. [实践路线和验收条件](docs/ROADMAP.md)
-17. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
-18. [讲解与协作约定](AGENTS.md)
+16. [增加训练预算：多轮对照从 12 批到 50 批](docs/lessons/16-joint50-training-budget.md)
+17. [梯度裁剪、学习率和价值头：先检查再做多种子实验](docs/lessons/17-gradient-clip-lr-diagnostics.md)
+18. [策略学习率与梯度裁剪：12 批受控小试](docs/lessons/18-actor-lr-clip-pilot.md)
+19. [实践路线和验收条件](docs/ROADMAP.md)
+20. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
+21. [讲解与协作约定](AGENTS.md)
 
 实践路线：
 
