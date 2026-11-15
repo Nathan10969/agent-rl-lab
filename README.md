@@ -10,6 +10,7 @@
 - 已实现积木任务的 DAPO 教学版，并进行了小规模真实模型冒烟检查；[记录](docs/lessons/05-dapo-first-implementation.md)区分单元测试、流程验证与尚未开展的性能实验。
 - 已完成 20 批积木 DAPO 教学实验及完整 val 同题对比，见[实验记录](docs/lessons/06-dapo-first-run.md)；这不是论文复现或独立 test 结论。
 - 已完成确定性多轮交互、多轮 SFT 和小规模多轮 RL 学习；随后加入逐步奖励、reward-to-go、价值预测与每步优势。[增加到 50 批](docs/lessons/16-joint50-training-budget.md)后，两组在 30 道开发题上分别成功 11 和 10 道；[策略学习率与梯度裁剪小试](docs/lessons/18-actor-lr-clip-pilot.md)仍需多随机种子复核，单次结果不足以判断方法普遍优劣。
+- 完成[固定策略价值头三种子小试](docs/lessons/20-value-multiseed-results.md)和[逐轨迹断点续采检查](docs/lessons/19-value-multiseed-smoke.md)；开局预测尚未稳定超过简单基线，开发题不是独立最终测试。
 - 多轮阶段的代码与测试仍在本地整理，暂未全部纳入公开仓库；下方学习记录公开的是过程、设置、结果及其局限，不包含模型权重和原始轨迹。
 - 早期 `sft/train_lora.py` 使用固定输出目录，重复运行可能覆盖结果；全量 SFT 和 GRPO 脚本使用独立的新运行目录。
 - 第一阶段使用 Blocksworld（积木世界）的离散任务规划，不控制真实机器人的电机，也不涉及图像策略或连续动作。
@@ -35,9 +36,11 @@
 16. [增加训练预算：多轮对照从 12 批到 50 批](docs/lessons/16-joint50-training-budget.md)
 17. [梯度裁剪、学习率和价值头：先检查再做多种子实验](docs/lessons/17-gradient-clip-lr-diagnostics.md)
 18. [策略学习率与梯度裁剪：12 批受控小试](docs/lessons/18-actor-lr-clip-pilot.md)
-19. [实践路线和验收条件](docs/ROADMAP.md)
-20. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
-21. [讲解与协作约定](AGENTS.md)
+19. [固定策略价值头：三种子流程冒烟与断点续采](docs/lessons/19-value-multiseed-smoke.md)
+20. [固定策略价值头：三种子小规模对照](docs/lessons/20-value-multiseed-results.md)
+21. [实践路线和验收条件](docs/ROADMAP.md)
+22. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
+23. [讲解与协作约定](AGENTS.md)
 
 实践路线：
 
