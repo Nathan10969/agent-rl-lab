@@ -14,7 +14,8 @@
 - 在[新的中途状态重复采样](docs/lessons/21-mid-state-value-check.md)后，三个新价值头平均误差暂未优于简单基线；尚未据此推断策略成功率。
 - 已完成[价值头／无价值头三种子策略对照](docs/lessons/23-paired-value-three-seeds.md)：本次 20 道开发题的成功集合相同；这是有限预算下的结果，不是最终测试结论。
 - [固定状态概率检查](docs/lessons/24-fixed-state-policy-probabilities.md)：对 40 个旧策略位置，比较六个模型生成的旧动作序列；观察到的变化及其限制已记录。
-- [0.5B 阶段归档与 27B 迁移准备](docs/lessons/25-0.5b-archive-and-27b-preparation.md)：保留已有实验，先验证 A800 量化加载和小规模闭环评测；27B 成绩尚未产生。
+- [0.5B 阶段归档与 27B 迁移准备](docs/lessons/25-0.5b-archive-and-27b-preparation.md)：保留已有实验，转向 A800 上的量化加载与小规模闭环评测。
+- [A800 上的 27B FP8 首次初测](docs/lessons/26-a800-27b-first-baseline.md)：已能生成；3 道积木开发题成功，3 类 ALFWorld 题均在 20 步内未完成。样本很小，且动作提示不完整，还不能作为通用能力结论。
 - 多轮阶段的代码与测试仍在本地整理，暂未全部纳入公开仓库；下方学习记录公开的是过程、设置、结果及其局限，不包含模型权重和原始轨迹。
 - 早期 `sft/train_lora.py` 使用固定输出目录，重复运行可能覆盖结果；全量 SFT 和 GRPO 脚本使用独立的新运行目录。
 - 第一阶段使用 Blocksworld（积木世界）的离散任务规划，不控制真实机器人的电机，也不涉及图像策略或连续动作。
@@ -47,9 +48,10 @@
 23. [三个种子：价值头对策略成功率有帮助吗](docs/lessons/23-paired-value-three-seeds.md)
 24. [固定状态：训练前后的动作概率](docs/lessons/24-fixed-state-policy-probabilities.md)
 25. [0.5B 阶段归档与 27B 迁移准备](docs/lessons/25-0.5b-archive-and-27b-preparation.md)
-26. [实践路线和验收条件](docs/ROADMAP.md)
-27. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
-28. [讲解与协作约定](AGENTS.md)
+26. [单卡 A800：27B FP8 加载与多轮任务初测](docs/lessons/26-a800-27b-first-baseline.md)
+27. [实践路线和验收条件](docs/ROADMAP.md)
+28. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
+29. [讲解与协作约定](AGENTS.md)
 
 实践路线：
 
