@@ -21,6 +21,39 @@ def free_local_port():
         return sock.getsockname()[1]
 
 
+def build_eval_commands(common, cases, data_dir, output_dir, only_alfworld=False,
+                        action_guide=False, reference_dir=None):
+    commands = {
+        "blocksworld": common + ["--task", "blocksworld", "--cases", str(cases),
+                                 "--output-dir", str(output_dir / "blocksworld")],
+        "alfworld": common + ["--task", "alfworld", "--data-dir", str(data_dir),
+                              "--output-dir", str(output_dir / "alfworld")],
+    }
+    if action_guide:
+        commands["alfworld"].append("--alfworld-action-guide")
+    if reference_dir is not None:
+        commands["alfworld"] += ["--reference-alfworld-dir", str(reference_dir)]
+    if only_alfworld:
+        del commands["blocksworld"]
+    return commands
+
+
+def verify_server_reference(reference_dir, server_command):
+    """Allow the local ephemeral port to change, but not the server settings."""
+    previous = json.loads((Path(reference_dir).parent / "config.json").read_text())["server_command"]
+
+    def without_port(command):
+        if command.count("--port") != 1:
+            raise ValueError("server command must contain exactly one port")
+        index = command.index("--port")
+        if index + 1 >= len(command):
+            raise ValueError("server port is missing")
+        return command[:index] + command[index + 2:]
+
+    if without_port(previous) != without_port(server_command):
+        raise ValueError("baseline server settings or model path do not match")
+
+
 @contextmanager
 def ready_server(command, ready_url, log, timeout):
     """Run a server in its own process group and always shut that group down."""
@@ -65,6 +98,9 @@ def main():
     parser.add_argument("--alfworld-data", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--max-steps", type=int, default=20)
+    parser.add_argument("--only-alfworld", action="store_true")
+    parser.add_argument("--alfworld-action-guide", action="store_true")
+    parser.add_argument("--reference-alfworld-dir", type=Path)
     args = parser.parse_args()
     if args.max_steps < 1:
         parser.error("--max-steps must be positive")
@@ -77,19 +113,20 @@ def main():
                       "--port", str(port), "--served-model-name", model_name,
                       "--max-model-len", "4096", "--max-num-seqs", "1",
                       "--gpu-memory-utilization", "0.8", "--enforce-eager", "--language-model-only"]
+    if args.reference_alfworld_dir:
+        verify_server_reference(args.reference_alfworld_dir, server_command)
     eval_script = Path(__file__).resolve().parent / "evaluate.py"
     common = [str(args.eval_python), str(eval_script), "--model", model_name, "--url", url,
               "--max-steps", str(args.max_steps)]
-    commands = {
-        "blocksworld": common + ["--task", "blocksworld", "--cases", str(args.cases),
-                                 "--output-dir", str(args.output_dir / "blocksworld")],
-        "alfworld": common + ["--task", "alfworld", "--data-dir", str(args.alfworld_data),
-                              "--output-dir", str(args.output_dir / "alfworld")],
-    }
+    commands = build_eval_commands(common, args.cases, args.alfworld_data, args.output_dir,
+                                   only_alfworld=args.only_alfworld,
+                                   action_guide=args.alfworld_action_guide,
+                                   reference_dir=args.reference_alfworld_dir)
     save_json_new(args.output_dir / "config.json", {
         "server_command": server_command, "evaluation_commands": commands,
         "max_model_len": 4096, "max_steps": args.max_steps,
         "temperature": 0, "thinking": False, "text_only": True,
+        "reference_server_matched": args.reference_alfworld_dir is not None,
     })
 
     started = time.monotonic()

@@ -20,6 +20,24 @@ def select_alfworld_games(games, count=3):
     raise ValueError(f"fewer than {count} distinct ALFWorld task families")
 
 
+def verify_alfworld_reference(reference_dir, data_dir, games, model, max_steps):
+    """Reject a comparison unless the saved settings and game IDs match."""
+    reference_dir, data_dir = Path(reference_dir), Path(data_dir)
+    config = json.loads((reference_dir / "config.json").read_text())
+    expected = {"task": "alfworld", "model": model, "max_steps": max_steps,
+                "temperature": 0, "max_new_tokens": 48, "thinking": False}
+    if any(config.get(key) != value for key, value in expected.items()):
+        raise ValueError("baseline generation settings do not match")
+    if config.get("prompt_variant", "base") != "base":
+        raise ValueError("baseline must use the original prompt")
+    episode_files = sorted(reference_dir.glob("episode-*.json"))
+    previous_ids = [json.loads(path.read_text())["source_id"] for path in episode_files]
+    current_ids = [str(Path(game).relative_to(data_dir)) for game in games]
+    if previous_ids != current_ids:
+        raise ValueError("baseline ALFWorld game IDs do not match")
+    return current_ids
+
+
 def build_alfworld_config(data_dir, max_steps):
     if max_steps < 1:
         raise ValueError("max_steps must be positive")

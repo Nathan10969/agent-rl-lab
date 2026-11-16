@@ -11,6 +11,26 @@ from recovery_samples import build_recovery_sample
 from step_env import BlocksworldEnv, format_feedback
 
 
+# Static TextWorld command templates, not a list of actions valid in this state.
+ALFWORLD_ACTION_GUIDE = "\n".join([
+    "Available command formats; use names exactly as shown by the environment:",
+    "go to <receptacle>",
+    "open <receptacle>",
+    "close <receptacle>",
+    "take <object> from <receptacle>",
+    "move <object> to <receptacle>",
+    "examine <object or receptacle>",
+    "use <object>",
+    "heat <object> with <receptacle>",
+    "clean <object> with <receptacle>",
+    "cool <object> with <receptacle>",
+    "slice <object> with <object>",
+    "look",
+    "inventory",
+    "help",
+])
+
+
 def save_json_new(path, value):
     """Write one result once, never replacing an earlier experiment."""
     with Path(path).open("x", encoding="utf-8") as handle:
@@ -79,7 +99,7 @@ def run_blocksworld(case, policy, max_steps):
             "termination_reason": "goal_reached" if success else "step_limit", "trace": trace}
 
 
-def run_alfworld(env, policy, max_steps):
+def run_alfworld(env, policy, max_steps, action_guide=""):
     """Run one ALFWorld game; distinguish a won game from a time limit."""
     if max_steps < 1:
         raise ValueError("max_steps must be positive")
@@ -87,7 +107,8 @@ def run_alfworld(env, policy, max_steps):
     instruction = ("You are interacting with a text household environment. "
                    "Output exactly one environment command per turn, with no explanation; "
                    "wait for feedback before the next command.\n\n")
-    messages = [{"role": "user", "content": instruction + observations[0]}]
+    guide = action_guide + "\n\n" if action_guide else ""
+    messages = [{"role": "user", "content": instruction + guide + observations[0]}]
     trace = []
     won = done = False
     for _ in range(max_steps):

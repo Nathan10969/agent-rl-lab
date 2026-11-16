@@ -23,6 +23,10 @@ try:
 except ImportError:
     run_alfworld = None
 try:
+    from baseline_eval import ALFWORLD_ACTION_GUIDE
+except ImportError:
+    ALFWORLD_ACTION_GUIDE = None
+try:
     from baseline_eval import select_block_cases
 except ImportError:
     select_block_cases = None
@@ -50,15 +54,20 @@ try:
     from alfworld_probe import select_alfworld_games
 except ImportError:
     select_alfworld_games = None
+try:
+    from alfworld_probe import verify_alfworld_reference
+except ImportError:
+    verify_alfworld_reference = None
 
 
 class BaselineEvalTest(unittest.TestCase):
     def test_alfworld_cli_counts_won_and_records_task_name(self):
         script = Path(__file__).resolve().parent / "evaluate.py"
+        received = []
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
-                self.rfile.read(int(self.headers["Content-Length"]))
+                received.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
                 response = json.dumps({"choices": [{"message": {"content": "look"}}]}).encode()
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(response)))
@@ -104,6 +113,27 @@ class BaselineEvalTest(unittest.TestCase):
                 self.assertIn("task", summary)
                 self.assertEqual(summary["task"], "alfworld")
                 self.assertEqual((summary["success"], summary["total"]), (3, 3))
+                guided_output = root / "guided"
+                guided_command = command.copy()
+                guided_command[guided_command.index("--output-dir") + 1] = str(guided_output)
+                guided_command += ["--alfworld-action-guide", "--reference-alfworld-dir", str(output)]
+                guided = subprocess.run(guided_command, capture_output=True, text=True, timeout=15, env=environment)
+                self.assertEqual(guided.returncode, 0, guided.stderr)
+                guided_config = json.loads((guided_output / "config.json").read_text())
+                self.assertEqual(guided_config["prompt_variant"], "static-action-guide")
+                self.assertTrue(json.loads((guided_output / "reference_check.json").read_text())["matched"])
+                self.assertEqual(len(received), 6)
+                self.assertNotIn(ALFWORLD_ACTION_GUIDE, received[0]["messages"][0]["content"])
+                self.assertIn(ALFWORLD_ACTION_GUIDE, received[3]["messages"][0]["content"])
+                self.assertEqual(received[0]["temperature"], received[3]["temperature"])
+
+                mismatch_command = guided_command.copy()
+                mismatch_command[mismatch_command.index("--output-dir") + 1] = str(root / "mismatch")
+                mismatch_command[mismatch_command.index("--max-steps") + 1] = "4"
+                mismatch = subprocess.run(mismatch_command, capture_output=True, text=True, timeout=15,
+                                          env=environment)
+                self.assertNotEqual(mismatch.returncode, 0)
+                self.assertEqual(len(received), 6, "a mismatched comparison must stop before model requests")
         finally:
             server.shutdown()
             thread.join()
@@ -129,6 +159,31 @@ class BaselineEvalTest(unittest.TestCase):
                          ["look_at_obj", "pick_and_place", "pick_clean"])
         with self.assertRaises(ValueError):
             select_alfworld_games(games[:2], 3)
+
+    def test_alfworld_reference_rejects_different_cases_or_generation_settings(self):
+        self.assertIsNotNone(verify_alfworld_reference, "reference verification has not been implemented")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = root / "data"
+            reference = root / "baseline"
+            reference.mkdir()
+            config = {"task": "alfworld", "model": "model", "max_steps": 20,
+                      "temperature": 0, "max_new_tokens": 48, "thinking": False}
+            (reference / "config.json").write_text(json.dumps(config))
+            games = [data / "a" / "game.tw-pddl", data / "b" / "game.tw-pddl"]
+            for index, game in enumerate(games):
+                (reference / f"episode-{index:03d}.json").write_text(
+                    json.dumps({"source_id": str(game.relative_to(data))}))
+            self.assertEqual(verify_alfworld_reference(reference, data, games, "model", 20),
+                             ["a/game.tw-pddl", "b/game.tw-pddl"])
+            with self.assertRaises(ValueError):
+                verify_alfworld_reference(reference, data, games[::-1], "model", 20)
+            with self.assertRaises(ValueError):
+                verify_alfworld_reference(reference, data, games, "model", 21)
+            config["temperature"] = 0.8
+            (reference / "config.json").write_text(json.dumps(config))
+            with self.assertRaises(ValueError):
+                verify_alfworld_reference(reference, data, games, "model", 20)
 
     def test_peak_memory_uses_observed_samples_only(self):
         self.assertIsNotNone(summarize_memory, "summarize_memory has not been implemented")
@@ -297,6 +352,43 @@ class BaselineEvalTest(unittest.TestCase):
         result = run_alfworld(Environment(), lambda messages: "look", max_steps=4)
         self.assertFalse(result["success"])
         self.assertEqual(result["termination_reason"], "environment_done")
+
+    def test_alfworld_guide_changes_only_the_initial_prompt(self):
+        self.assertIsNotNone(ALFWORLD_ACTION_GUIDE, "static ALFWorld guide has not been implemented")
+
+        class Environment:
+            def __init__(self):
+                self.steps = 0
+
+            def reset(self):
+                return ["Room observation and task."], {}
+
+            def step(self, actions):
+                self.steps += 1
+                return [f"Feedback {self.steps}"], [0], [self.steps == 2], {"won": [False]}
+
+        def record_run(guide):
+            calls = []
+
+            def policy(messages):
+                calls.append(messages)
+                return "look"
+
+            result = run_alfworld(Environment(), policy, max_steps=20, action_guide=guide)
+            return calls, result
+
+        plain, plain_result = record_run("")
+        guided, guided_result = record_run(ALFWORLD_ACTION_GUIDE)
+        old_prefix = ("You are interacting with a text household environment. "
+                      "Output exactly one environment command per turn, with no explanation; "
+                      "wait for feedback before the next command.\n\n")
+        self.assertEqual(plain[0][0]["content"], old_prefix + "Room observation and task.")
+        self.assertEqual(guided[0][0]["content"],
+                         old_prefix + ALFWORLD_ACTION_GUIDE + "\n\n" + "Room observation and task.")
+        self.assertEqual(plain[1][1:], guided[1][1:])
+        self.assertEqual(plain_result, guided_result)
+        self.assertIn("move <object> to <receptacle>", ALFWORLD_ACTION_GUIDE)
+        self.assertNotIn("alarmclock 2", ALFWORLD_ACTION_GUIDE)
 
     def test_alfworld_feedback_is_visible_before_next_action(self):
         self.assertIsNotNone(run_alfworld, "run_alfworld has not been implemented")
