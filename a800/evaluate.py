@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from alfworld_probe import build_alfworld_config, select_alfworld_games, verify_alfworld_reference
+from alfworld_manifest import match_manifest_games
 from baseline_eval import ALFWORLD_ACTION_GUIDE, request_action, run_blocksworld, save_json_new, select_block_cases, summarize
 from baseline_eval import run_alfworld
 
@@ -23,6 +24,7 @@ def main():
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--alfworld-action-guide", action="store_true")
     parser.add_argument("--reference-alfworld-dir", type=Path)
+    parser.add_argument("--alfworld-manifest", type=Path)
     args = parser.parse_args()
     if args.max_steps < 1:
         parser.error("--max-steps must be positive")
@@ -30,10 +32,13 @@ def main():
         parser.error("--cases is required for blocksworld")
     if args.task == "alfworld" and args.data_dir is None:
         parser.error("--data-dir is required for alfworld")
-    if args.task != "alfworld" and (args.alfworld_action_guide or args.reference_alfworld_dir):
+    if args.task != "alfworld" and (args.alfworld_action_guide or args.reference_alfworld_dir
+                                    or args.alfworld_manifest):
         parser.error("ALFWorld guide and reference options require --task alfworld")
     data = args.cases.read_bytes() if args.cases else None
     cases = select_block_cases(json.loads(data)["cases"]) if data else None
+    manifest_data = args.alfworld_manifest.read_bytes() if args.alfworld_manifest else None
+    manifest_sha256 = hashlib.sha256(manifest_data).hexdigest() if manifest_data else None
     args.output_dir.mkdir(parents=True, exist_ok=False)
     save_json_new(args.output_dir / "config.json", {
         "task": args.task, "model": args.model,
@@ -44,6 +49,8 @@ def main():
         "action_guide_sha256": (hashlib.sha256(ALFWORLD_ACTION_GUIDE.encode()).hexdigest()
                                 if args.alfworld_action_guide else None),
         "reference_requested": args.reference_alfworld_dir is not None,
+        "manifest_sha256": manifest_sha256,
+        "per_case_seed": 0 if manifest_data else None,
     })
     started = time.monotonic()
     episodes = []
@@ -64,17 +71,27 @@ def main():
             np.random.seed(0)
             world = AlfredTWEnv(build_alfworld_config(args.data_dir, args.max_steps),
                                 train_eval="eval_in_distribution")
-            games = select_alfworld_games(world.game_files, 3)
+            games = (match_manifest_games(json.loads(manifest_data), args.data_dir, world.game_files)
+                     if manifest_data else select_alfworld_games(world.game_files, 3))
             if args.reference_alfworld_dir:
                 ids = verify_alfworld_reference(args.reference_alfworld_dir, args.data_dir,
-                                                games, args.model, args.max_steps)
+                                                games, args.model, args.max_steps,
+                                                manifest_sha256=manifest_sha256)
                 save_json_new(args.output_dir / "reference_check.json", {"matched": True, "case_ids": ids})
             for index, game in enumerate(games):
+                if manifest_data:
+                    random.seed(0)
+                    np.random.seed(0)
                 world.game_files = [game]
                 env = world.init_env(batch_size=1)
                 try:
                     guide = ALFWORLD_ACTION_GUIDE if args.alfworld_action_guide else ""
-                    result = run_alfworld(env, policy, max_steps=args.max_steps, action_guide=guide)
+                    expected_initial = None
+                    if manifest_data and args.reference_alfworld_dir:
+                        episode_path = args.reference_alfworld_dir / f"episode-{index:03d}.json"
+                        expected_initial = json.loads(episode_path.read_text())["initial_observation_sha256"]
+                    result = run_alfworld(env, policy, max_steps=args.max_steps, action_guide=guide,
+                                          expected_initial_observation_sha256=expected_initial)
                 finally:
                     env.close()
                 result["source_id"] = str(Path(game).relative_to(args.data_dir))

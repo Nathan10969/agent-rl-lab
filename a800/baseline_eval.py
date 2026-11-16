@@ -1,5 +1,6 @@
 """Minimal, inference-only closed-loop baseline for the archived tasks."""
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -99,11 +100,15 @@ def run_blocksworld(case, policy, max_steps):
             "termination_reason": "goal_reached" if success else "step_limit", "trace": trace}
 
 
-def run_alfworld(env, policy, max_steps, action_guide=""):
+def run_alfworld(env, policy, max_steps, action_guide="", expected_initial_observation_sha256=None):
     """Run one ALFWorld game; distinguish a won game from a time limit."""
     if max_steps < 1:
         raise ValueError("max_steps must be positive")
     observations, _ = env.reset()
+    initial_observation_sha256 = hashlib.sha256(observations[0].encode("utf-8")).hexdigest()
+    if (expected_initial_observation_sha256 is not None
+            and initial_observation_sha256 != expected_initial_observation_sha256):
+        raise ValueError("paired ALFWorld initial observations do not match")
     instruction = ("You are interacting with a text household environment. "
                    "Output exactly one environment command per turn, with no explanation; "
                    "wait for feedback before the next command.\n\n")
@@ -123,4 +128,5 @@ def run_alfworld(env, policy, max_steps, action_guide=""):
         if won or done:
             break
     reason = "goal_reached" if won else "environment_done" if done else "step_limit"
-    return {"success": won, "termination_reason": reason, "trace": trace}
+    return {"success": won, "termination_reason": reason, "trace": trace,
+            "initial_observation_sha256": initial_observation_sha256}

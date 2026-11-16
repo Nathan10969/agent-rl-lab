@@ -1,5 +1,7 @@
 """CPU-only checks for the real Blocksworld baseline loop."""
 import sys
+import hashlib
+import inspect
 import json
 import os
 import subprocess
@@ -61,6 +63,84 @@ except ImportError:
 
 
 class BaselineEvalTest(unittest.TestCase):
+    def test_manifest_cli_pairs_games_and_rejects_changed_initial_observation(self):
+        script = Path(__file__).resolve().parent / "evaluate.py"
+        received = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                response = json.dumps({"choices": [{"message": {"content": "look"}}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+
+            def log_message(self, format, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                module = root / "fake" / "alfworld" / "agents" / "environment" / "alfred_tw_env.py"
+                module.parent.mkdir(parents=True)
+                for package in (module.parent, module.parent.parent, module.parent.parent.parent):
+                    (package / "__init__.py").touch()
+                module.write_text(
+                    'import os\nfrom pathlib import Path\n'
+                    'class Env:\n'
+                    ' def reset(self): return [os.getenv("FAKE_OBSERVATION", "task")], {}\n'
+                    ' def step(self, actions): return ["won"], [1], [True], {"won": [True]}\n'
+                    ' def close(self): pass\n'
+                    'class AlfredTWEnv:\n'
+                    ' def __init__(self, config, train_eval):\n'
+                    '  base = Path(config["dataset"]["eval_id_data_path"])\n'
+                    '  self.game_files = [str(base / f"task{i}-object" / "trial" / "game.tw-pddl") for i in range(3)]\n'
+                    ' def init_env(self, batch_size): return Env()\n'
+                )
+                data = root / "data"
+                cases = []
+                for index in range(3):
+                    game = data / "json_2.1.1" / "valid_seen" / f"task{index}-object" / "trial" / "game.tw-pddl"
+                    game.parent.mkdir(parents=True)
+                    game.write_bytes(f"game {index}".encode())
+                    cases.append({"source_id": str(game.relative_to(data)),
+                                  "game_sha256": hashlib.sha256(game.read_bytes()).hexdigest()})
+                manifest = root / "manifest.json"
+                manifest.write_text(json.dumps({"cases": cases}))
+                environment = os.environ.copy()
+                environment["PYTHONPATH"] = str(root / "fake")
+                base_output = root / "base"
+                command = [sys.executable, str(script), "--task", "alfworld", "--model", "fake",
+                           "--url", f"http://127.0.0.1:{server.server_port}", "--data-dir", str(data),
+                           "--output-dir", str(base_output), "--max-steps", "3",
+                           "--alfworld-manifest", str(manifest)]
+                base = subprocess.run(command, capture_output=True, text=True, timeout=15, env=environment)
+                self.assertEqual(base.returncode, 0, base.stderr)
+                self.assertIn("initial_observation_sha256", json.loads((base_output / "episode-000.json").read_text()))
+
+                guided = command.copy()
+                guided[guided.index("--output-dir") + 1] = str(root / "guided")
+                guided += ["--alfworld-action-guide", "--reference-alfworld-dir", str(base_output)]
+                result = subprocess.run(guided, capture_output=True, text=True, timeout=15, env=environment)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(len(received), 6)
+
+                changed = guided.copy()
+                changed[changed.index("--output-dir") + 1] = str(root / "changed")
+                changed_environment = dict(environment, FAKE_OBSERVATION="different task")
+                result = subprocess.run(changed, capture_output=True, text=True, timeout=15,
+                                        env=changed_environment)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(len(received), 6, "different initial observation must stop before model request")
+        finally:
+            server.shutdown()
+            thread.join()
+            server.server_close()
+
     def test_alfworld_cli_counts_won_and_records_task_name(self):
         script = Path(__file__).resolve().parent / "evaluate.py"
         received = []
@@ -162,6 +242,7 @@ class BaselineEvalTest(unittest.TestCase):
 
     def test_alfworld_reference_rejects_different_cases_or_generation_settings(self):
         self.assertIsNotNone(verify_alfworld_reference, "reference verification has not been implemented")
+        self.assertIn("manifest_sha256", inspect.signature(verify_alfworld_reference).parameters)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             data = root / "data"
@@ -176,6 +257,11 @@ class BaselineEvalTest(unittest.TestCase):
                     json.dumps({"source_id": str(game.relative_to(data))}))
             self.assertEqual(verify_alfworld_reference(reference, data, games, "model", 20),
                              ["a/game.tw-pddl", "b/game.tw-pddl"])
+            config["manifest_sha256"] = "fixed-manifest"
+            (reference / "config.json").write_text(json.dumps(config))
+            verify_alfworld_reference(reference, data, games, "model", 20, manifest_sha256="fixed-manifest")
+            with self.assertRaises(ValueError):
+                verify_alfworld_reference(reference, data, games, "model", 20, manifest_sha256="different")
             with self.assertRaises(ValueError):
                 verify_alfworld_reference(reference, data, games[::-1], "model", 20)
             with self.assertRaises(ValueError):
@@ -389,6 +475,30 @@ class BaselineEvalTest(unittest.TestCase):
         self.assertEqual(plain_result, guided_result)
         self.assertIn("move <object> to <receptacle>", ALFWORLD_ACTION_GUIDE)
         self.assertNotIn("alarmclock 2", ALFWORLD_ACTION_GUIDE)
+
+    def test_alfworld_rejects_different_initial_observations_before_model_request(self):
+        class Environment:
+            def reset(self):
+                return ["initial room"], {}
+
+            def step(self, actions):
+                return ["finished"], [0], [True], {"won": [False]}
+
+        calls = []
+
+        def policy(messages):
+            calls.append(messages)
+            return "look"
+
+        result = run_alfworld(Environment(), policy, max_steps=20)
+        self.assertIn("initial_observation_sha256", result)
+        self.assertEqual(result["initial_observation_sha256"],
+                         hashlib.sha256(b"initial room").hexdigest())
+        calls.clear()
+        with self.assertRaises(ValueError):
+            run_alfworld(Environment(), policy, max_steps=20,
+                         expected_initial_observation_sha256="0" * 64)
+        self.assertEqual(calls, [])
 
     def test_alfworld_feedback_is_visible_before_next_action(self):
         self.assertIsNotNone(run_alfworld, "run_alfworld has not been implemented")

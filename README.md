@@ -17,6 +17,7 @@
 - [0.5B 阶段归档与 27B 迁移准备](docs/lessons/25-0.5b-archive-and-27b-preparation.md)：保留已有实验，转向 A800 上的量化加载与小规模闭环评测。
 - [A800 上的 27B FP8 首次初测](docs/lessons/26-a800-27b-first-baseline.md)：已能生成；3 道积木开发题成功，3 类 ALFWorld 题均在 20 步内未完成。样本很小，且动作提示不完整，还不能作为通用能力结论。
 - [ALFWorld 动作格式对照](docs/lessons/27-alfworld-action-format-comparison.md)：同一批 3 道开发题，补充静态命令格式后从 0/3 变为 1/3；样本很小，不是训练收益或完整 benchmark。
+- [30 道题的动作格式成对对照](docs/lessons/28-alfworld-30-paired-comparison.md)：六类各 5 题，固定 20 步；无说明 1/30，有说明 12/30，30 对初始观察哈希一致。仍是小规模开发集，不是训练或官方 benchmark。
 - 多轮阶段的代码与测试仍在本地整理，暂未全部纳入公开仓库；下方学习记录公开的是过程、设置、结果及其局限，不包含模型权重和原始轨迹。
 - 早期 `sft/train_lora.py` 使用固定输出目录，重复运行可能覆盖结果；全量 SFT 和 GRPO 脚本使用独立的新运行目录。
 - 第一阶段使用 Blocksworld（积木世界）的离散任务规划，不控制真实机器人的电机，也不涉及图像策略或连续动作。
@@ -51,9 +52,10 @@
 25. [0.5B 阶段归档与 27B 迁移准备](docs/lessons/25-0.5b-archive-and-27b-preparation.md)
 26. [单卡 A800：27B FP8 加载与多轮任务初测](docs/lessons/26-a800-27b-first-baseline.md)
 27. [ALFWorld：只加动作格式说明，会发生什么？](docs/lessons/27-alfworld-action-format-comparison.md)
-28. [实践路线和验收条件](docs/ROADMAP.md)
-29. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
-30. [讲解与协作约定](AGENTS.md)
+28. [ALFWorld：30 道题的动作格式成对对照](docs/lessons/28-alfworld-30-paired-comparison.md)
+29. [实践路线和验收条件](docs/ROADMAP.md)
+30. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
+31. [讲解与协作约定](AGENTS.md)
 
 实践路线：
 

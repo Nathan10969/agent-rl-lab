@@ -22,7 +22,18 @@ def free_local_port():
 
 
 def build_eval_commands(common, cases, data_dir, output_dir, only_alfworld=False,
-                        action_guide=False, reference_dir=None):
+                        action_guide=False, reference_dir=None, paired_manifest=None):
+    if paired_manifest is not None:
+        if not only_alfworld or action_guide:
+            raise ValueError("paired evaluation requires ALFWorld-only and controls its own guide")
+        base = common + ["--task", "alfworld", "--data-dir", str(data_dir),
+                         "--output-dir", str(output_dir / "alfworld-base"),
+                         "--alfworld-manifest", str(paired_manifest)]
+        guided = common + ["--task", "alfworld", "--data-dir", str(data_dir),
+                           "--output-dir", str(output_dir / "alfworld-guide"),
+                           "--alfworld-manifest", str(paired_manifest), "--alfworld-action-guide",
+                           "--reference-alfworld-dir", str(output_dir / "alfworld-base")]
+        return {"alfworld-base": base, "alfworld-guide": guided}
     commands = {
         "blocksworld": common + ["--task", "blocksworld", "--cases", str(cases),
                                  "--output-dir", str(output_dir / "blocksworld")],
@@ -101,9 +112,12 @@ def main():
     parser.add_argument("--only-alfworld", action="store_true")
     parser.add_argument("--alfworld-action-guide", action="store_true")
     parser.add_argument("--reference-alfworld-dir", type=Path)
+    parser.add_argument("--paired-alfworld-manifest", type=Path)
     args = parser.parse_args()
     if args.max_steps < 1:
         parser.error("--max-steps must be positive")
+    if args.paired_alfworld_manifest and (not args.only_alfworld or args.alfworld_action_guide):
+        parser.error("paired evaluation requires --only-alfworld and controls its own guide")
     args.output_dir.mkdir(parents=True, exist_ok=False)
 
     port = free_local_port()
@@ -121,7 +135,8 @@ def main():
     commands = build_eval_commands(common, args.cases, args.alfworld_data, args.output_dir,
                                    only_alfworld=args.only_alfworld,
                                    action_guide=args.alfworld_action_guide,
-                                   reference_dir=args.reference_alfworld_dir)
+                                   reference_dir=args.reference_alfworld_dir,
+                                   paired_manifest=args.paired_alfworld_manifest)
     save_json_new(args.output_dir / "config.json", {
         "server_command": server_command, "evaluation_commands": commands,
         "max_model_len": 4096, "max_steps": args.max_steps,
@@ -145,13 +160,16 @@ def main():
                 for task, command in commands.items():
                     with (args.output_dir / f"{task}.log").open("x", encoding="utf-8") as log:
                         completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
-                                                   timeout=1200, check=False)
+                                                   timeout=2400 if args.paired_alfworld_manifest else 1200,
+                                                   check=False)
                     task_result = {"exit_code": completed.returncode}
                     summary_path = args.output_dir / task / "summary.json"
                     if summary_path.exists():
                         task_result["summary"] = json.loads(summary_path.read_text())
                     result["tasks"][task] = task_result
                     print(f"{task}: exit={completed.returncode}", flush=True)
+                    if args.paired_alfworld_manifest and task == "alfworld-base" and completed.returncode:
+                        raise RuntimeError("baseline failed; guided arm was not started")
         result["status"] = "ok" if all(task["exit_code"] == 0 for task in result["tasks"].values()) else "error"
     except Exception as error:
         result["error_type"] = type(error).__name__

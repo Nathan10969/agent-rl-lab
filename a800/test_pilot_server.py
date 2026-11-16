@@ -1,5 +1,6 @@
 """Checks for the bounded local inference-server lifecycle (no GPU needed)."""
 import json
+import inspect
 import subprocess
 import sys
 import tempfile
@@ -21,6 +22,20 @@ except ImportError:
 
 
 class PilotServerTest(unittest.TestCase):
+    def test_paired_manifest_builds_both_arms_with_the_same_case_file(self):
+        self.assertIn("paired_manifest", inspect.signature(build_eval_commands).parameters)
+        common = ["python", "evaluate.py", "--model", "model", "--max-steps", "20"]
+        commands = build_eval_commands(common, Path("cases.json"), Path("data"), Path("run"),
+                                       only_alfworld=True, paired_manifest=Path("fixed.json"))
+        self.assertEqual(list(commands), ["alfworld-base", "alfworld-guide"])
+        base, guide = commands["alfworld-base"], commands["alfworld-guide"]
+        self.assertEqual(base[:len(common)], guide[:len(common)])
+        for command in (base, guide):
+            self.assertEqual(command[command.index("--alfworld-manifest") + 1], "fixed.json")
+        self.assertNotIn("--alfworld-action-guide", base)
+        self.assertIn("--alfworld-action-guide", guide)
+        self.assertEqual(guide[guide.index("--reference-alfworld-dir") + 1], "run/alfworld-base")
+
     def test_server_reference_allows_only_a_different_ephemeral_port(self):
         self.assertIsNotNone(verify_server_reference, "server configuration checking is missing")
         with tempfile.TemporaryDirectory() as directory:
