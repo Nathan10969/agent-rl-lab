@@ -11,6 +11,10 @@
 - 已完成 20 批积木 DAPO 教学实验及完整 val 同题对比，见[实验记录](docs/lessons/06-dapo-first-run.md)；这不是论文复现或独立 test 结论。
 - 已完成确定性多轮交互、多轮 SFT 和小规模多轮 RL 学习；随后加入逐步奖励、reward-to-go、价值预测与每步优势。[增加到 50 批](docs/lessons/16-joint50-training-budget.md)后，两组在 30 道开发题上分别成功 11 和 10 道；[策略学习率与梯度裁剪小试](docs/lessons/18-actor-lr-clip-pilot.md)仍需多随机种子复核，单次结果不足以判断方法普遍优劣。
 - 完成[固定策略价值头三种子小试](docs/lessons/20-value-multiseed-results.md)和[逐轨迹断点续采检查](docs/lessons/19-value-multiseed-smoke.md)；开局预测尚未稳定超过简单基线，开发题不是独立最终测试。
+- 在[新的中途状态重复采样](docs/lessons/21-mid-state-value-check.md)后，三个新价值头平均误差暂未优于简单基线；尚未据此推断策略成功率。
+- 已完成[价值头／无价值头三种子策略对照](docs/lessons/23-paired-value-three-seeds.md)：本次 20 道开发题的成功集合相同；这是有限预算下的结果，不是最终测试结论。
+- [固定状态概率检查](docs/lessons/24-fixed-state-policy-probabilities.md)：对 40 个旧策略位置，比较六个模型生成的旧动作序列；观察到的变化及其限制已记录。
+- [0.5B 阶段归档与 27B 迁移准备](docs/lessons/25-0.5b-archive-and-27b-preparation.md)：保留已有实验，先验证 A800 量化加载和小规模闭环评测；27B 成绩尚未产生。
 - 多轮阶段的代码与测试仍在本地整理，暂未全部纳入公开仓库；下方学习记录公开的是过程、设置、结果及其局限，不包含模型权重和原始轨迹。
 - 早期 `sft/train_lora.py` 使用固定输出目录，重复运行可能覆盖结果；全量 SFT 和 GRPO 脚本使用独立的新运行目录。
 - 第一阶段使用 Blocksworld（积木世界）的离散任务规划，不控制真实机器人的电机，也不涉及图像策略或连续动作。
@@ -38,9 +42,14 @@
 18. [策略学习率与梯度裁剪：12 批受控小试](docs/lessons/18-actor-lr-clip-pilot.md)
 19. [固定策略价值头：三种子流程冒烟与断点续采](docs/lessons/19-value-multiseed-smoke.md)
 20. [固定策略价值头：三种子小规模对照](docs/lessons/20-value-multiseed-results.md)
-21. [实践路线和验收条件](docs/ROADMAP.md)
-22. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
-23. [讲解与协作约定](AGENTS.md)
+21. [新的中途状态：价值预测与重复采样](docs/lessons/21-mid-state-value-check.md)
+22. [新价值头接回策略：同批轨迹冒烟](docs/lessons/22-paired-value-actor-smoke.md)
+23. [三个种子：价值头对策略成功率有帮助吗](docs/lessons/23-paired-value-three-seeds.md)
+24. [固定状态：训练前后的动作概率](docs/lessons/24-fixed-state-policy-probabilities.md)
+25. [0.5B 阶段归档与 27B 迁移准备](docs/lessons/25-0.5b-archive-and-27b-preparation.md)
+26. [实践路线和验收条件](docs/ROADMAP.md)
+27. [原有 RL 13 讲基础路线](docs/RL_FOUNDATIONS.md)
+28. [讲解与协作约定](AGENTS.md)
 
 实践路线：
 
